@@ -9,7 +9,10 @@ class Settings(BaseSettings):
     app_name: str = "Personal Expense Tracker API"
     app_version: str = "0.1.0"
     environment: str = "development"
-    database_url: str = "sqlite:///./expenses.db"
+
+    # Async SQLAlchemy needs the `+asyncpg` driver in the URL.
+    # Format: postgresql+asyncpg://<user>:<password>@<host>:<port>/<db>
+    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/expense_tracker"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
