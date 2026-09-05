@@ -3,6 +3,7 @@ import time
 from fastapi import FastAPI
 
 from app.config import get_settings
+from app.routers import categories_router, transactions_router
 
 settings = get_settings()
 _start_time = time.monotonic()
@@ -12,6 +13,9 @@ app = FastAPI(
     version=settings.app_version,
     description="API for tracking personal income and expenses.",
 )
+
+app.include_router(categories_router)
+app.include_router(transactions_router)
 
 
 @app.get("/", tags=["root"])

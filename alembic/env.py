@@ -25,8 +25,11 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Use the same database URL the app itself uses (env vars / .env), rather
-# than a second hardcoded copy in alembic.ini.
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+# than a second hardcoded copy in alembic.ini. Escaping % as %% prevents
+# configparser from raising ValueError on URL-encoded characters (e.g., %40).
+config.set_main_option(
+    "sqlalchemy.url", get_settings().database_url.replace("%", "%%")
+)
 
 # add your model's MetaData object here
 # for 'autogenerate' support
