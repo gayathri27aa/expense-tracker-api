@@ -1,8 +1,8 @@
 from typing import Annotated
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,8 +10,9 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.category import Category
 from app.models.enums import TransactionType
+from app.models.transaction import Transaction
 from app.models.user import User
-from app.schemas.category import CategoryCreate, CategoryResponse
+from app.schemas.category import CategoryCreate, CategoryResponse, CategoryUpdate
 
 router = APIRouter(prefix="/categories", tags=["categories"])
 
@@ -101,3 +102,87 @@ async def get_category(
         )
 
     return category
+
+
+@router.patch("/{id}", response_model=CategoryResponse)
+async def update_category(
+    id: uuid.UUID,
+    payload: CategoryUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Category:
+    """
+    Update an existing category.
+    Type is immutable after creation.
+    Returns 404 if not found or not owned by user.
+    Returns 409 if renaming creates a duplicate category name for this user.
+    """
+    category = await db.get(Category, id)
+
+    if category is None or category.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Category not found.",
+        )
+
+    update_data = payload.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(category, field, value)
+
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A category named '{payload.name}' already exists.",
+        )
+
+    await db.refresh(category)
+    return category
+
+
+@router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_category(
+    id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    """
+    Delete a category.
+    Returns 404 if not found or not owned by user.
+    Returns 409 if category has associated transactions (data integrity rule).
+    """
+    category = await db.get(Category, id)
+
+    if category is None or category.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Category not found.",
+        )
+
+    # Check if category has transactions
+    tx_count_stmt = (
+        select(func.count())
+        .select_from(Transaction)
+        .where(Transaction.category_id == id)
+    )
+    tx_count = (await db.execute(tx_count_stmt)).scalar_one()
+
+    if tx_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete category because it has associated transactions.",
+        )
+
+    try:
+        await db.delete(category)
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete category because it has associated transactions.",
+        )
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

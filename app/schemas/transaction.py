@@ -1,6 +1,6 @@
-import uuid
 from datetime import date, datetime
 from decimal import Decimal
+import uuid
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -20,6 +20,17 @@ class TransactionCreate(BaseModel):
     description: str | None = Field(default=None, max_length=500)
     payment_method: str | None = Field(default=None, max_length=50)
     transaction_date: date
+
+
+class TransactionUpdate(BaseModel):
+    category_id: uuid.UUID | None = None
+    amount: Decimal | None = Field(
+        default=None, gt=0, le=Decimal("999999999.99"), decimal_places=2
+    )
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
+    description: str | None = Field(default=None, max_length=500)
+    payment_method: str | None = Field(default=None, max_length=50)
+    transaction_date: date | None = None
 
 
 class TransactionResponse(BaseModel):

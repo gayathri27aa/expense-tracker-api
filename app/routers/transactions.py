@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Annotated
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +16,11 @@ from app.models.enums import TransactionType
 from app.models.transaction import Transaction
 from app.models.user import User
 from app.schemas.common import Page
-from app.schemas.transaction import TransactionCreate, TransactionResponse
+from app.schemas.transaction import (
+    TransactionCreate,
+    TransactionResponse,
+    TransactionUpdate,
+)
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -252,3 +256,100 @@ async def get_transaction(
         )
 
     return transaction
+
+
+@router.patch("/{id}", response_model=TransactionResponse)
+async def update_transaction(
+    id: uuid.UUID,
+    payload: TransactionUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Transaction:
+    """
+    Update an existing transaction.
+    Returns 404 if transaction is not found or not owned by user.
+    If category_id is updated, validates that the category exists, belongs
+    to the user, and matches the transaction's type (400 on mismatch).
+    """
+    query = (
+        select(Transaction)
+        .options(selectinload(Transaction.category))
+        .where(
+            Transaction.id == id,
+            Transaction.user_id == current_user.id,
+        )
+    )
+    result = await db.execute(query)
+    transaction = result.scalar_one_or_none()
+
+    if transaction is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Transaction not found.",
+        )
+
+    update_data = payload.model_dump(exclude_unset=True)
+
+    # Validate and assign category reassignment if category_id is changing
+    if "category_id" in update_data and update_data["category_id"] is not None:
+        new_category = await db.get(Category, update_data["category_id"])
+        if new_category is None or new_category.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Category not found.",
+            )
+
+        if new_category.type != transaction.type:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Transaction type '{transaction.type.value}' does not match "
+                    f"category '{new_category.name}', which is type "
+                    f"'{new_category.type.value}'."
+                ),
+            )
+        transaction.category = new_category
+
+    for field, value in update_data.items():
+        if field != "category_id":
+            setattr(transaction, field, value)
+
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Could not update transaction — check the submitted data.",
+        )
+
+    # Re-fetch transaction with eager-loaded Category
+    result = await db.execute(
+        select(Transaction)
+        .options(selectinload(Transaction.category))
+        .where(Transaction.id == transaction.id)
+    )
+    return result.scalar_one()
+
+
+@router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_transaction(
+    id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    """
+    Delete a transaction.
+    Returns 404 if not found or not owned by user.
+    """
+    transaction = await db.get(Transaction, id)
+
+    if transaction is None or transaction.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Transaction not found.",
+        )
+
+    await db.delete(transaction)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

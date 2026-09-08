@@ -16,6 +16,13 @@ class CategoryCreate(BaseModel):
     icon: str | None = Field(default=None, max_length=50)
 
 
+class CategoryUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    color: str | None = Field(default=None, pattern=_HEX_COLOR_PATTERN)
+    icon: str | None = Field(default=None, max_length=50)
+    # type is immutable after creation — see api-design.md §6 rule 3
+
+
 class CategoryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
