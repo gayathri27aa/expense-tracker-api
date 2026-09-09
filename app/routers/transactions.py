@@ -162,6 +162,12 @@ async def list_transactions(
     if type is not None:
         filters.append(Transaction.type == type)
     if category_id is not None:
+        filter_category = await db.get(Category, category_id)
+        if filter_category is None or filter_category.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Category not found.",
+            )
         filters.append(Transaction.category_id == category_id)
     if date_from is not None:
         filters.append(Transaction.transaction_date >= date_from)
