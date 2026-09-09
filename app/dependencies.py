@@ -1,34 +1,60 @@
 """
-TEMPORARY: Auth is a future milestone (see api-design.md §4.1) and hasn't
-been implemented yet. Every transaction/category still needs a real
-user_id to satisfy the foreign key, so this dependency fetches — or
-creates, on first call — a single demo user and returns it.
+Real JWT-based get_current_user dependency.
 
-Swap this for real JWT-based auth later without touching any router code:
-routers depend on `get_current_user` and only care that it returns a
-`User`, not how that user was determined.
+Replaces the previous demo-user stub. Routers are unchanged — they still
+call `Depends(get_current_user)` and receive a `User` ORM object, so the
+swap is completely transparent to all existing endpoint code.
 """
 
-from sqlalchemy import select
+import uuid
+
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fastapi import Depends
-
+from app.auth import decode_access_token
 from app.database import get_db
 from app.models.user import User
 
-_DEMO_USER_EMAIL = "demo@expensetracker.local"
+# The tokenUrl tells Swagger UI where to POST credentials for the
+# "Authorize" button — it does not change any routing behaviour.
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
-async def get_current_user(db: AsyncSession = Depends(get_db)) -> User:
-    result = await db.execute(select(User).where(User.email == _DEMO_USER_EMAIL))
-    user = result.scalar_one_or_none()
+async def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """
+    FastAPI dependency that validates the Bearer JWT and returns the
+    corresponding User from the database.
+
+    Raises 401 Unauthorized when:
+      - the Authorization header is missing (handled by OAuth2PasswordBearer)
+      - the token is expired, tampered, or otherwise invalid
+      - the encoded user UUID does not correspond to any row in the DB
+    """
+    credentials_exc = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials.",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    payload = decode_access_token(token)
+    if payload is None:
+        raise credentials_exc
+
+    sub: str | None = payload.get("sub")
+    if sub is None:
+        raise credentials_exc
+
+    try:
+        user_id = uuid.UUID(sub)
+    except ValueError:
+        raise credentials_exc
+
+    user = await db.get(User, user_id)
     if user is None:
-        user = User(
-            email=_DEMO_USER_EMAIL,
-            hashed_password="not-a-real-hash--auth-not-yet-implemented",
-        )
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
+        raise credentials_exc
+
     return user

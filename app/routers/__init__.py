@@ -1,4 +1,5 @@
+from app.routers.auth import router as auth_router
 from app.routers.categories import router as categories_router
 from app.routers.transactions import router as transactions_router
 
-__all__ = ["categories_router", "transactions_router"]
+__all__ = ["auth_router", "categories_router", "transactions_router"]

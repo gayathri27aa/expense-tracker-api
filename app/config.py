@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     # Format: postgresql+asyncpg://<user>:<password>@<host>:<port>/<db>
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/expense_tracker"
 
+    # JWT settings — override all three in production via environment variables.
+    # Generate a strong secret_key with: python -c "import secrets; print(secrets.token_hex(32))"
+    secret_key: str = "changeme-generate-a-real-key-before-deploying"
+    algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 
