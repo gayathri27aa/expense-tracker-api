@@ -4,10 +4,14 @@ from typing import Annotated
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+
+
+def _escape_like(val: str) -> str:
+    return val.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 from app.database import get_db
 from app.dependencies import get_current_user
@@ -108,6 +112,22 @@ async def list_transactions(
         uuid.UUID | None,
         Query(description="Filter by category ID"),
     ] = None,
+    search: Annotated[
+        str | None,
+        Query(description="Case-insensitive search across description and category name"),
+    ] = None,
+    q: Annotated[
+        str | None,
+        Query(description="Alias for search"),
+    ] = None,
+    payment_method: Annotated[
+        str | None,
+        Query(description="Filter by payment method (e.g. cash, card, upi)"),
+    ] = None,
+    currency: Annotated[
+        str | None,
+        Query(min_length=3, max_length=3, description="Filter by 3-letter currency code (e.g. INR, USD)"),
+    ] = None,
     date_from: Annotated[
         date | None,
         Query(description="Filter from transaction date (inclusive, YYYY-MM-DD)"),
@@ -169,6 +189,25 @@ async def list_transactions(
                 detail="Category not found.",
             )
         filters.append(Transaction.category_id == category_id)
+
+    search_term = search or q
+    search_join = False
+    if search_term and search_term.strip():
+        search_join = True
+        pattern = f"%{_escape_like(search_term.strip())}%"
+        filters.append(
+            or_(
+                Transaction.description.ilike(pattern),
+                Category.name.ilike(pattern),
+            )
+        )
+
+    if payment_method and payment_method.strip():
+        filters.append(func.lower(Transaction.payment_method) == payment_method.strip().lower())
+
+    if currency and currency.strip():
+        filters.append(Transaction.currency == currency.strip().upper())
+
     if date_from is not None:
         filters.append(Transaction.transaction_date >= date_from)
     if date_to is not None:
@@ -210,14 +249,19 @@ async def list_transactions(
         order_by_clauses.append(Transaction.id.asc())
 
     # Total count for pagination metadata
-    count_query = select(func.count()).select_from(Transaction).where(*filters)
+    count_query = select(func.count()).select_from(Transaction)
+    if search_join:
+        count_query = count_query.join(Category, Transaction.category_id == Category.id)
+    count_query = count_query.where(*filters)
     total_result = await db.execute(count_query)
     total = total_result.scalar_one()
 
     # Paginated rows query with eager-loaded Category
+    items_query = select(Transaction).options(selectinload(Transaction.category))
+    if search_join:
+        items_query = items_query.join(Category, Transaction.category_id == Category.id)
     items_query = (
-        select(Transaction)
-        .options(selectinload(Transaction.category))
+        items_query
         .where(*filters)
         .order_by(*order_by_clauses)
         .offset((page - 1) * page_size)

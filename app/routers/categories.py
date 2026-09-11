@@ -43,11 +43,19 @@ async def create_category(
     return category
 
 
+def _escape_like(val: str) -> str:
+    return val.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 @router.get("", response_model=list[CategoryResponse])
 async def list_categories(
     type: Annotated[
         TransactionType | None,
         Query(description="Filter categories by type (expense or income)"),
+    ] = None,
+    search: Annotated[
+        str | None,
+        Query(description="Search categories by name (case-insensitive)"),
     ] = None,
     page: Annotated[
         int | None,
@@ -62,7 +70,7 @@ async def list_categories(
 ) -> list[Category]:
     """
     List categories belonging to the authenticated user.
-    Optionally filter by category type (expense/income).
+    Optionally filter by category type (expense/income) or search by name.
     Guarantees stable ordering (alphabetical by name, tie-break by ID).
     Supports optional pagination via page and page_size.
     """
@@ -70,6 +78,10 @@ async def list_categories(
 
     if type is not None:
         stmt = stmt.where(Category.type == type)
+
+    if search:
+        search_pattern = f"%{_escape_like(search.strip())}%"
+        stmt = stmt.where(Category.name.ilike(search_pattern))
 
     # Stable deterministic ordering: sort by name ascending, break ties with UUID
     stmt = stmt.order_by(Category.name.asc(), Category.id.asc())
