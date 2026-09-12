@@ -3,7 +3,7 @@ import time
 from fastapi import FastAPI
 
 from app.config import get_settings
-from app.routers import auth_router, categories_router, transactions_router
+from app.routers import auth_router, categories_router, currencies_router, transactions_router
 
 settings = get_settings()
 _start_time = time.monotonic()
@@ -16,6 +16,7 @@ app = FastAPI(
 
 app.include_router(auth_router)
 app.include_router(categories_router)
+app.include_router(currencies_router)
 app.include_router(transactions_router)
 
 

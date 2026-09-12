@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
 
+    # External Exchange Rate Service settings
+    exchange_rate_api_url: str = "https://open.er-api.com/v6/latest"
+    exchange_rate_cache_ttl_seconds: int = 3600
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 

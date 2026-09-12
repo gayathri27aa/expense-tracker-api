@@ -1,6 +1,7 @@
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse
 from app.schemas.category import CategoryCreate, CategoryResponse, CategoryUpdate
 from app.schemas.common import Page
+from app.schemas.currency import CurrencyConversionResponse, ExchangeRatesResponse
 from app.schemas.transaction import (
     TransactionCreate,
     TransactionResponse,
@@ -11,6 +12,8 @@ __all__ = [
     "CategoryCreate",
     "CategoryResponse",
     "CategoryUpdate",
+    "CurrencyConversionResponse",
+    "ExchangeRatesResponse",
     "LoginRequest",
     "Page",
     "RegisterRequest",

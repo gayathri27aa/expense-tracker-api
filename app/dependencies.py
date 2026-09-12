@@ -58,3 +58,19 @@ async def get_current_user(
         raise credentials_exc
 
     return user
+
+
+# ---------------------------------------------------------------------------
+# Exchange Rate Service dependency
+# ---------------------------------------------------------------------------
+# A single shared instance is used across all requests: it holds the TTL
+# cache, so re-creating it on every request would defeat the caching purpose.
+
+from app.services.exchange_rate import ExchangeRateService  # noqa: E402
+
+_exchange_rate_service = ExchangeRateService()
+
+
+def get_exchange_rate_service() -> ExchangeRateService:
+    """FastAPI dependency that returns the shared ExchangeRateService instance."""
+    return _exchange_rate_service
