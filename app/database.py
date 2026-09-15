@@ -9,6 +9,10 @@ from sqlalchemy.orm import DeclarativeBase
 
 from app.config import get_settings
 
+import logging
+
+logger = logging.getLogger("app.database")
+
 settings = get_settings()
 
 # echo=True logs generated SQL — handy in dev, worth turning off in prod
@@ -34,6 +38,17 @@ class Base(DeclarativeBase):
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """FastAPI dependency that yields a request-scoped async DB session."""
+    """
+    FastAPI dependency that yields a request-scoped async DB session.
+    Automatically rolls back any pending transaction if an unhandled exception occurs.
+    """
     async with AsyncSessionLocal() as session:
-        yield session
+        try:
+            yield session
+        except Exception as exc:
+            logger.warning("Rolling back active DB transaction due to exception: %s", exc)
+            if session.is_active:
+                await session.rollback()
+            raise
+        finally:
+            await session.close()

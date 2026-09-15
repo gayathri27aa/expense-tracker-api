@@ -3,7 +3,12 @@ import time
 from fastapi import FastAPI
 
 from app.config import get_settings
+from app.errors import register_exception_handlers
+from app.logging_config import setup_logging
+from app.middleware import RequestLoggingMiddleware
 from app.routers import auth_router, categories_router, currencies_router, transactions_router
+
+setup_logging()
 
 settings = get_settings()
 _start_time = time.monotonic()
@@ -13,6 +18,9 @@ app = FastAPI(
     version=settings.app_version,
     description="API for tracking personal income and expenses.",
 )
+
+app.add_middleware(RequestLoggingMiddleware)
+register_exception_handlers(app)
 
 app.include_router(auth_router)
 app.include_router(categories_router)

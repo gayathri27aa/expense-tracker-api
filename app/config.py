@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     exchange_rate_api_url: str = "https://open.er-api.com/v6/latest"
     exchange_rate_cache_ttl_seconds: int = 3600
 
+    # Logging settings
+    log_level: str = "INFO"
+    log_format: str = "json"  # "json" or "console"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 

@@ -5,14 +5,19 @@ POST /auth/register  →  201 UserResponse
 POST /auth/login     →  200 TokenResponse
 """
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import create_access_token, hash_password, verify_password
 from app.database import get_db
 from app.models.user import User
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -40,8 +45,17 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)) ->
         full_name=body.full_name,
     )
     db.add(user)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        logger.warning("Integrity error registering user with email %s: %s", body.email, exc)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Email '{body.email}' is already registered.",
+        )
     await db.refresh(user)
+    logger.info("Successfully registered new user: %s (id=%s)", user.email, user.id)
     return user
 
 
